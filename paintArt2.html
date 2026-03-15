@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, minimum-scale=0.5, user-scalable=yes">
+<title>Paint Android Proporsional</title>
+<style>
+html,body{margin:0;padding:0;overflow:hidden;background:#eee;height:100%;display:flex;flex-direction:column;align-items:center;}
+#toolbar{
+  display:flex;gap:5px;padding:5px;background:#f0f0f0;
+  flex-wrap:wrap;justify-content:center;z-index:10;
+}
+canvas{
+  border:2px solid #999;
+  background-color:#fff;
+  /* touch-action:none;  <-- hapus ini */
+  display:block;
+  max-width: 100%;
+  max-height: 100%;
+}
+button,input{font-size:14px;}
+</style>
+</head>
+<body>
+
+<div id="toolbar">
+  <label>Canvas W: <input type="number" id="cWidth" value="500"></label>
+  <label>Canvas H: <input type="number" id="cHeight" value="500"></label>
+  <button id="setCanvas">Set Canvas</button>
+  <input type="file" id="pilih" accept="image/png,image/*">
+  <button id="undo">Undo</button>
+  <button id="redo">Redo</button>
+  <button id="reset">Reset</button>
+  <button id="save">Simpan PNG</button>
+<label>Ukuran Brush: <input type="range" id="brushSize" min="10" max="800" value="50"></label>
+<span id="brushSizeVal">50</span>
+</div>
+
+<canvas id="canvas"></canvas>
+
+<script>
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+let brush = new Image();
+let menggambar = false;
+let history = [];
+let historyIndex = -1;
+
+/* Set canvas dengan proporsi sesuai input */
+function setCanvasSize(){
+  const w = parseInt(document.getElementById("cWidth").value);
+  const h = parseInt(document.getElementById("cHeight").value);
+
+  canvas.width = w;
+  canvas.height = h;
+
+  // Sesuaikan ukuran tampilan supaya proporsional di layar
+  const aspect = h / w;
+  canvas.style.width = Math.min(w, window.innerWidth - 20) + "px";
+  canvas.style.height = (Math.min(w, window.innerWidth - 20) * aspect) + "px";
+
+  ctx.setTransform(1,0,0,1,0,0);
+ctx.clearRect(0,0,w,h); // transparan
+  
+  history = [];
+  historyIndex = -1;
+  saveHistory();
+}
+document.getElementById("setCanvas").addEventListener("click",setCanvasSize);
+
+/* Pilih brush PNG */
+document.getElementById("pilih").onchange = function(e){
+  const file = e.target.files[0];
+  const reader = new FileReader();
+  reader.onload = function(event){
+    brush.src = event.target.result;
+  }
+  reader.readAsDataURL(file);
+}
+
+/* Fungsi menggambar */
+function gambar(x, y){
+  if(!brush.src) return;
+  const size = parseInt(document.getElementById("brushSize").value);
+  ctx.drawImage(brush, x - size/2, y - size/2, size, size);
+}
+
+/* Posisi touch relatif canvas */
+function getTouchPos(touch){
+  const rect = canvas.getBoundingClientRect();
+  return {
+    x: (touch.clientX - rect.left) * (canvas.width / rect.width),
+    y: (touch.clientY - rect.top) * (canvas.height / rect.height)
+  };
+}
+
+/* History management */
+function saveHistory(){
+  history = history.slice(0, historyIndex+1);
+  history.push(canvas.toDataURL());
+  historyIndex++;
+}
+function undo(){
+  if(historyIndex <= 0) return;
+  historyIndex--;
+  let img = new Image();
+  img.src = history[historyIndex];
+  img.onload = ()=>ctx.drawImage(img,0,0,canvas.width,canvas.height);
+}
+function redo(){
+  if(historyIndex >= history.length-1) return;
+  historyIndex++;
+  let img = new Image();
+  img.src = history[historyIndex];
+  img.onload = ()=>ctx.drawImage(img,0,0,canvas.width,canvas.height);
+}
+
+/* Reset */
+document.getElementById("reset").addEventListener("click",()=>{
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  saveHistory();
+});
+
+/* Save PNG */
+document.getElementById("save").addEventListener("click",()=>{
+  const link = document.createElement("a");
+  link.download = "paint.png";
+  link.href = canvas.toDataURL("image/png");
+  link.click();
+});
+
+const brushSizeInput = document.getElementById("brushSize");
+const brushSizeVal = document.getElementById("brushSizeVal");
+
+brushSizeInput.addEventListener("input", ()=>{
+  brushSizeVal.textContent = brushSizeInput.value;
+});
+
+
+/* Touch events */
+canvas.addEventListener("touchstart",function(e){
+  menggambar = true;
+  const pos = getTouchPos(e.touches[0]);
+  gambar(pos.x,pos.y);
+  saveHistory();
+});
+canvas.addEventListener("touchmove",function(e){
+  e.preventDefault();
+  if(!menggambar) return;
+  const pos = getTouchPos(e.touches[0]);
+  gambar(pos.x,pos.y);
+});
+canvas.addEventListener("touchend",function(){
+  menggambar = false;
+});
+
+/* Undo / Redo */
+document.getElementById("undo").addEventListener("click",undo);
+document.getElementById("redo").addEventListener("click",redo);
+
+/* Init canvas default */
+setCanvasSize();
+</script>
+
+</body>
+</html>
