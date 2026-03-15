@@ -3,7 +3,20 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, minimum-scale=0.5, user-scalable=yes">
-<title>Paint Android Proporsional</title>
+ 
+  <!-- ICON -->
+<link rel="icon" href="icon.jpg">
+<link rel="apple-touch-icon" href="icon.jpg">
+
+<!-- PWA -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#121212">
+
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+ 
+  
+  <title>Paint Android Proporsional</title>
 <style>
 html,body{margin:0;padding:0;overflow:hidden;background:#eee;height:100%;display:flex;flex-direction:column;align-items:center;}
 #toolbar{
@@ -162,6 +175,16 @@ document.getElementById("redo").addEventListener("click",redo);
 /* Init canvas default */
 setCanvasSize();
 </script>
+  <script>
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('service-worker.js')
+  .then(function(reg){
+    console.log("Service Worker aktif", reg);
+  }).catch(function(err){
+    console.log("Service Worker gagal", err);
+  });
+}
+  </script>
 
 </body>
 </html>
