@@ -1,9 +1,10 @@
-const CACHE_NAME = "jumpBoom-v1";
+const CACHE_NAME = "Paint Brush-v1";
 
 const urlsToCache = [
   "./",
   "./index.html",
-  "./logo.png"
+  "./icon.jpg",
+  "./manifest.json"
 ];
 
 self.addEventListener("install", function(event) {
