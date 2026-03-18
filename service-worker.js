@@ -4,9 +4,7 @@ const urlsToCache = [
   "./",
   "./index.html",
   "./icon.jpg",
-  "./manifest.json",
-  "./style.css",
-"./script.js"
+  "./manifest.json"
 ];
 
 // Install → simpan cache
