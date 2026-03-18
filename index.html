@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Editor UI - Pinch Zoom Fix</title>
+    <style>
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        
+        body {
+            background-color: #222;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            font-family: Arial, sans-serif;
+            color: #ccc;
+            overflow: hidden;
+            /* Mencegah scroll browser saat di-pinch */
+            overscroll-behavior-y: contain; 
+            touch-action: none; 
+        }
+
+        /* Container Menu Utama (Sama seperti gambar) */
+        .ui-panel {
+            width: 100%;
+            max-width: 450px;
+            background-color: #333;
+            border-bottom-left-radius: 15px;
+            border-bottom-right-radius: 15px;
+            padding: 15px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+            z-index: 20; /* Lebih tinggi dari canvas box */
+            flex-shrink: 0;
+        }
+
+        /* Toolbar Icons */
+        .toolbar {
+            display: flex;
+            justify-content: space-between;
+              gap: 1px;
+            margin-bottom: 5px;
+        }
+
+        .icon-btn {
+            background-color: #2e5873;
+            border: 1px solid #555;
+            border-radius: 5px;
+            padding: 8px;
+            cursor: pointer;
+            font-size: 18px;
+            transition: 0.2s;
+            color: white;
+            width: 42px;
+            height: 42px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            touch-action: manipulation; /* Cegah double tap zoom */
+        }
+
+        .icon-btn:active { background-color: #00ffff; }
+        .icon-btn.active { background-color: #ff3b30; border-color: #ff3b30; }
+
+        /* Input Dimensi & Zoom */
+        .settings-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 12px;
+            font-size: 13px;
+        }
+
+        .input-group { display: flex; align-items: center; gap: 5px; }
+
+        input[type="number"] {
+            background-color: #1a1a1a;
+            border: 1px solid #444;
+            color: white;
+            padding: 4px;
+            width: 55px;
+            border-radius: 3px;
+            font-size: 12px;
+        }
+
+        /* Slider Section */
+        .slider-container {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .slider-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .slider-row label { width: 100px; font-size: 12px; }
+
+        input[type="range"] {
+            flex-grow: 1;
+            accent-color: #007aff;
+            height: 4px;
+        }
+
+        .value-label { width: 30px; text-align: right; font-size: 12px; color: #aaa; }
+
+        /* Area Canvas Area (Tempat Gambar Berada) */
+        #canvasBox {
+            flex: 1;
+            width: 100%;
+            position: relative;
+            overflow: hidden;
+            background-color: #1a1a1a;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: grab;
+            z-index: 10;
+            /* Penting: menonaktifkan semua action browser bawaan di area ini */
+            touch-action: none; 
+        }
+
+        #viewCanvas {
+            background-color: #ffffff;
+            /* Pattern catur untuk transparansi */
+            background-image: linear-gradient(45deg, #e0e0e0 25%, transparent 25%), 
+                              linear-gradient(-45deg, #e0e0e0 25%, transparent 25%), 
+                              linear-gradient(45deg, transparent 75%, #e0e0e0 75%), 
+                              linear-gradient(-45deg, transparent 75%, #e0e0e0 75%);
+            background-size: 20px 20px;
+            background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+            /* Optimasi render agar tidak blur saat zoom */
+            image-rendering: auto; 
+            will-change: transform; 
+        }
+    </style>
+</head>
+<body>
+
+<div class="ui-panel">
+    <div class="toolbar">
+        <button class="icon-btn" onclick="newCanvas()" title="New">📐</button>
+        <button class="icon-btn" onclick="loadImage()" title="Image">🖼️</button>
+        <button class="icon-btn" onclick="loadBrush()" title="Brush">🎨</button>
+        <button class="icon-btn" id="btnDraw" onclick="setMode('draw')" title="Draw">✏️</button>
+        <button class="icon-btn active" id="btnMove" onclick="setMode('move')" title="Move">✋</button>
+        <button class="icon-btn" onclick="undo()" title="Undo">↩️</button>
+        <button class="icon-btn" onclick="redo()" title="Redo">↪️</button>
+        <button class="icon-btn" onclick="savePNG()" title="Save">💾</button>
+    </div>
+
+    <div class="settings-row">
+        <div class="input-group">
+            <label>W:</label>
+            <input type="number" id="canvasW" value="800">
+        </div>
+        <div class="input-group">
+            <label>H:</label>
+            <input type="number" id="canvasH" value="800">
+        </div>
+        <span>Zoom: <span id="zoomVal">100</span>%</span>
+    </div>
+
+    <div class="slider-container">
+        <div class="slider-row">
+            <label>UkuranBrush:</label>
+            <input type="range" id="brushSize" min="5" max="3000" value="50">
+            <span class="value-label" id="brushSizeVal">50</span>
+        </div>
+        <div class="slider-row">
+            <label>KepadatanBrush:</label>
+            <input type="range" id="densitySlider" min="1" max="100" value="20">
+            <span class="value-label" id="densityVal">20</span>
+        </div>
+    </div>
+</div>
+
+<div id="canvasBox">
+    <canvas id="viewCanvas"></canvas>
+</div>
+
+<input type="file" id="imageInput" accept="image/*" hidden>
+<input type="file" id="brushInput" accept="image/*" hidden>
+
+<script>
+(function() {
+    // === UI Elements ===
+    const canvas = document.getElementById("viewCanvas");
+    const ctx = canvas.getContext("2d");
+    const zoomValLabel = document.getElementById("zoomVal");
+    const brushSlider = document.getElementById("brushSize");
+    const brushSizeValLabel = document.getElementById("brushSizeVal");
+    const densitySlider = document.getElementById("densitySlider");
+    const densityValLabel = document.getElementById("densityVal");
+
+    // === App State ===
+    let brushSizeValue = 50;
+    let densityValue = 20;
+    let drawCanvas = document.createElement("canvas");
+    let drawCtx = drawCanvas.getContext("2d");
+    
+    let baseImage = null, brush = null;
+    let mode = "move"; // default mode
+    let strokes = [], redoStack = [], currentStroke = null;
+
+    // === Camera Transform (IMPORTANT for Zoom/Pan) ===
+    let scale = 0.5; // Start zoomed out
+    let offsetX = window.innerWidth / 2 - 200;
+    let offsetY = 100;
+
+    // === Interaction State ===
+    let isDragging = false;
+    let lastPointerX = 0, lastPointerY = 0;
+    let lastDrawX = 0, lastDrawY = 0;
+    
+    // Pinch zoom state (from original functions)
+    let initialPinchDist = null, initialScale = 1.0;
+    let pinchCenterX = 0, pinchCenterY = 0;
+
+    function init() {
+        resizeCanvasToWindow();
+        drawCanvas.width = 800; // default size
+        drawCanvas.height = 800;
+        clearDrawCanvas();
+        requestAnimationFrame(drawScene);
+    }
+
+    function resizeCanvasToWindow() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resizeCanvasToWindow);
+
+    // Slider inputs
+    brushSlider.oninput = () => {
+        brushSizeValue = parseFloat(brushSlider.value);
+        brushSizeValLabel.textContent = brushSizeValue;
+    };
+    densitySlider.oninput = () => {
+        densityValue = parseFloat(densitySlider.value);
+        densityValLabel.textContent = densityValue;
+    };
+
+    // === RENDERING ENGINE ===
+    function drawScene() {
+        // Clear viewport
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.save();
+        
+        // Apply Camera Transform (translate then scale)
+        ctx.translate(offsetX, offsetY);
+        ctx.scale(scale, scale);
+        
+        // Draw white drawing area
+        ctx.fillStyle = "white";
+        ctx.fillRect(0, 0, drawCanvas.width, drawCanvas.height);
+        
+        // Draw drawing layer
+        ctx.drawImage(drawCanvas, 0, 0);
+        
+        // Draw image frame (border)
+        ctx.strokeStyle = "#000";
+        ctx.lineWidth = 1 / scale; // Keep border thin
+        ctx.strokeRect(0, 0, drawCanvas.width, drawCanvas.height);
+        
+        ctx.restore();
+        
+        // Update Zoom Label in UI
+        zoomValLabel.innerText = Math.round(scale * 100);
+        requestAnimationFrame(drawScene);
+    }
+
+    function rebuildDrawCanvas() {
+        drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+        if (baseImage) drawCtx.drawImage(baseImage, 0, 0, drawCanvas.width, drawCanvas.height);
+        strokes.forEach(stroke => {
+            stroke.points.forEach(p => drawCtx.drawImage(stroke.brush, p.x - p.w/2, p.y - p.h/2, p.w, p.h));
+        });
+    }
+
+    function clearDrawCanvas() {
+        drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+        if (baseImage) drawCtx.drawImage(baseImage, 0, 0, drawCanvas.width, drawCanvas.height);
+    }
+
+    // Convert screen coordinates to canvas coordinates (considering zoom/offset)
+    function getInternalCoord(clientX, clientY) {
+        const rect = canvas.getBoundingClientRect();
+        return {
+            x: (clientX - rect.left - offsetX) / scale,
+            y: (clientY - rect.top - offsetY) / scale
+        };
+    }
+
+    // === INTERACTION LOGIC ===
+    function startInteraction(x, y) {
+        isDragging = true;
+        lastPointerX = x; lastPointerY = y;
+        
+        if (mode === 'draw' && brush) {
+            const internal = getInternalCoord(x, y);
+            currentStroke = { brush: brush, points: [] };
+            addBrushPoint(internal.x, internal.y, true);
+        }
+    }
+
+    function moveInteraction(x, y) {
+        if (!isDragging) return;
+        
+        if (mode === 'move') {
+            // Panning: adjust offset by pointer delta
+            offsetX += x - lastPointerX;
+            offsetY += y - lastPointerY;
+            lastPointerX = x; lastPointerY = y;
+        } else if (mode === 'draw' && brush && currentStroke) {
+            // Drawing: interpolate points based on density
+            const internal = getInternalCoord(x, y);
+            const dist = Math.hypot(internal.x - lastDrawX, internal.y - lastDrawY);
+            if (dist > brushSizeValue / (densityValue * 2)) addBrushPoint(internal.x, internal.y, false);
+        }
+    }
+
+    function addBrushPoint(ix, iy, setLast) {
+        const size = brushSizeValue;
+        const ratio = brush.width / brush.height;
+        let dw = ratio >= 1 ? size : size * ratio;
+        let dh = ratio >= 1 ? size / ratio : size;
+        drawCtx.drawImage(brush, ix - dw/2, iy - dh/2, dw, dh);
+        currentStroke.points.push({ x: ix, y: iy, w: dw, h: dh });
+        lastDrawX = ix; lastDrawY = iy;
+    }
+
+    // === PINCH ZOOM LOGIC (RE-ADDED & PROTECTED) ===
+    function handlePinchStart(e) {
+        if (e.touches.length === 2) {
+            e.preventDefault(); // Mencegah zoom browser bawaan
+            const touch1 = e.touches[0];
+            const touch2 = e.touches[1];
+            
+            // Hitung jarak awal pinch
+            const dx = touch1.pageX - touch2.pageX;
+            const dy = touch1.pageY - touch2.pageY;
+            initialPinchDist = Math.hypot(dx, dy);
+            initialScale = scale;
+            
+            // Hitung titik tengah pinch
+            pinchCenterX = (touch1.pageX + touch2.pageX) / 2;
+            pinchCenterY = (touch1.pageY + touch2.pageY) / 2;
+            
+            // Hentikan drag single finger sementara
+            isDragging = false; 
+        }
+    }
+
+    function handlePinchMove(e) {
+        if (e.touches.length === 2 && initialPinchDist !== null) {
+            e.preventDefault();
+            const touch1 = e.touches[0];
+            const touch2 = e.touches[1];
+            
+            const dx = touch1.pageX - touch2.pageX;
+            const dy = touch1.pageY - touch2.pageY;
+            const newDist = Math.hypot(dx, dy);
+            
+            // Hitung scale baru (batasi zoom)
+            let newScale = initialScale * (newDist / initialPinchDist);
+            newScale = Math.max(0.1, Math.min(10, newScale)); 
+            
+            const newCenterX = (touch1.pageX + touch2.pageX) / 2;
+            const newCenterY = (touch1.pageY + touch2.pageY) / 2;
+            
+            // Hitung offset baru agar titik di bawah pinchCenter tetap di posisi yang sama
+            const internalCenterX = (pinchCenterX - canvas.getBoundingClientRect().left - offsetX) / scale;
+            const internalCenterY = (pinchCenterY - canvas.getBoundingClientRect().top - offsetY) / scale;
+            
+            scale = newScale;
+            
+            const rect = canvas.getBoundingClientRect();
+            offsetX = newCenterX - rect.left - internalCenterX * scale;
+            offsetY = newCenterY - rect.top - internalCenterY * scale;
+            
+            pinchCenterX = newCenterX;
+            pinchCenterY = newCenterY;
+            initialScale = scale;
+            initialPinchDist = newDist;
+        }
+    }
+
+    function handlePinchEnd(e) {
+        if (e.touches.length < 2) { initialPinchDist = null; }
+    }
+
+    // === Touch Event Listeners (IMPORTANT ORDER) ===
+    canvas.addEventListener('touchstart', (e) => {
+        // Prioritaskan dua jari
+        if (e.touches.length === 2) {
+            handlePinchStart(e);
+        } else if (e.touches.length === 1) {
+            // Jika satu jari, biarkan logika interaction (drag/draw) jalan
+            startInteraction(e.touches[0].pageX, e.touches[0].pageY);
+        }
+    }, {passive: false}); // passive false wajib agar preventDefault berfungsi
+
+    canvas.addEventListener('touchmove', (e) => {
+        e.preventDefault(); // Matikan scroll browser bawaan
+        if (e.touches.length === 2) {
+            handlePinchMove(e);
+        } else if (e.touches.length === 1) {
+            moveInteraction(e.touches[0].pageX, e.touches[0].pageY);
+        }
+    }, {passive: false});
+
+    canvas.addEventListener('touchend', (e) => {
+        e.preventDefault();
+        handlePinchEnd(e);
+        if (e.touches.length === 0) {
+            if (currentStroke) { strokes.push(currentStroke); redoStack = []; currentStroke = null; }
+            isDragging = false;
+        }
+    });
+
+    // === Mouse Event Listeners (Desktop support) ===
+    canvas.addEventListener('mousedown', (e) => { if (e.target === canvas) startInteraction(e.pageX, e.pageY); });
+    window.addEventListener('mousemove', (e) => moveInteraction(e.pageX, e.pageY));
+    window.addEventListener('mouseup', () => {
+        if (currentStroke) { strokes.push(currentStroke); redoStack = []; currentStroke = null; }
+        isDragging = false;
+    });
+
+    // === Toolbar Functions ===
+    window.setMode = function(m) {
+        mode = m;
+        document.getElementById("btnDraw").classList.toggle("active", m === "draw");
+        document.getElementById("btnMove").classList.toggle("active", m === "move");
+    };
+
+    window.newCanvas = function() {
+        drawCanvas.width = parseInt(document.getElementById("canvasW").value) || 800;
+        drawCanvas.height = parseInt(document.getElementById("canvasH").value) || 800;
+        baseImage = null; strokes = []; redoStack = [];
+        clearDrawCanvas();
+    };
+
+    window.undo = function() { if (strokes.length) { redoStack.push(strokes.pop()); rebuildDrawCanvas(); } };
+    window.redo = function() { if (redoStack.length) { strokes.push(redoStack.pop()); rebuildDrawCanvas(); } };
+    
+    window.loadImage = () => document.getElementById("imageInput").click();
+    document.getElementById("imageInput").onchange = (e) => {
+        const file = e.target.files[0];
+        if(!file) return;
+        const img = new Image();
+        img.onload = () => { 
+            baseImage = img; 
+            drawCanvas.width = img.width; drawCanvas.height = img.height;
+            document.getElementById("canvasW").value = img.width;
+            document.getElementById("canvasH").value = img.height;
+            // Center the new image
+            offsetX = window.innerWidth / 2 - (img.width * scale) / 2;
+            rebuildDrawCanvas(); 
+        };
+        img.src = URL.createObjectURL(file);
+    };
+
+    window.loadBrush = () => document.getElementById("brushInput").click();
+    document.getElementById("brushInput").onchange = (e) => {
+        const file = e.target.files[0];
+        if(!file) return;
+        const img = new Image();
+        img.onload = () => { brush = img; setMode('draw'); };
+        img.src = URL.createObjectURL(file);
+    };
+
+    window.savePNG = () => {
+        const link = document.createElement("a");
+        link.download = "edit_" + Date.now() + ".png";
+        link.href = drawCanvas.toDataURL();
+        link.click();
+    };
+
+    init();
+})();
+</script>
+</body>
+</html>
