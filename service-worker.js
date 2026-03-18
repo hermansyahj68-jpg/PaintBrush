@@ -1,4 +1,4 @@
-const CACHE_NAME = "paint-brush-v1";
+const CACHE_NAME = "paint-brush-v1.0";
 
 const urlsToCache = [
   "./",
