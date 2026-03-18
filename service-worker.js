@@ -1,26 +1,48 @@
-const CACHE_NAME = "Paint Brush-v1";
+const CACHE_NAME = "paint-brush-v1";
 
 const urlsToCache = [
   "./",
   "./index.html",
   "./icon.jpg",
-  "./manifest.json"
+  "./manifest.json",
+  "./style.css",
+"./script.js"
 ];
 
-self.addEventListener("install", function(event) {
+// Install → simpan cache
+self.addEventListener("install", event => {
+  self.skipWaiting(); // langsung aktif
   event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then(function(cache) {
-        return cache.addAll(urlsToCache);
-      })
+    caches.open(CACHE_NAME).then(cache => {
+      return cache.addAll(urlsToCache);
+    })
   );
 });
 
-self.addEventListener("fetch", function(event) {
+// Activate → hapus cache lama
+self.addEventListener("activate", event => {
+  event.waitUntil(
+    caches.keys().then(keys => {
+      return Promise.all(
+        keys.map(key => {
+          if (key !== CACHE_NAME) {
+            return caches.delete(key);
+          }
+        })
+      );
+    })
+  );
+  self.clients.claim(); // langsung kontrol halaman
+});
+
+// Fetch → ambil dari cache dulu
+self.addEventListener("fetch", event => {
   event.respondWith(
-    caches.match(event.request)
-      .then(function(response) {
-        return response || fetch(event.request);
-      })
+    caches.match(event.request).then(response => {
+      if (response) {
+        return response; // ambil dari cache (offline mode)
+      }
+      return fetch(event.request);
+    })
   );
 });
